@@ -1,12 +1,12 @@
-import cron from "node-cron";
-import { supabase } from "./supabase.js";
-import { postTweet } from "./twitterClient.js";
+import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
+import { postTweet } from "@/lib/twitterClient";
 
-let isRunning = false;
-
-async function processQueue() {
-  if (isRunning) return;
-  isRunning = true;
+export async function GET(request) {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const now = new Date().toISOString();
@@ -18,9 +18,11 @@ async function processQueue() {
       .order("scheduled_for", { ascending: true });
 
     if (error) {
-      console.error("[scheduler] Failed to fetch queued tweets:", error.message);
-      return;
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    let processed = 0;
+    let failed = 0;
 
     for (const tweet of tweets || []) {
       try {
@@ -29,23 +31,18 @@ async function processQueue() {
           .from("tweets")
           .update({ status: "posted", posted_at: new Date().toISOString() })
           .eq("id", tweet.id);
-        console.log(`[scheduler] Posted tweet ${tweet.id}`);
+        processed++;
       } catch (err) {
         await supabase
           .from("tweets")
           .update({ status: "failed", error: err.message })
           .eq("id", tweet.id);
-        console.error(`[scheduler] Failed to post tweet ${tweet.id}:`, err.message);
+        failed++;
       }
     }
-  } catch (err) {
-    console.error("[scheduler] Unexpected error:", err.message);
-  } finally {
-    isRunning = false;
-  }
-}
 
-export function startScheduler() {
-  console.log("[scheduler] Starting tweet scheduler (every minute)");
-  cron.schedule("* * * * *", processQueue);
+    return NextResponse.json({ processed, failed });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }

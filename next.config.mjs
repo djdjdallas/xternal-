@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ["agent-twitter-client", "node-cron"],
+  serverExternalPackages: ["agent-twitter-client"],
 };
 
 export default nextConfig;
